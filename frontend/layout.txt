@@ -1,0 +1,23 @@
+src/
+│
+├── api/
+│   └── axios.js
+│
+├── layouts/
+│   └── DashboardLayout.vue
+│
+├── components/
+│   ├── Sidebar.vue
+│   ├── Topbar.vue
+│   └── ChartCard.vue 
+│
+├── pages/
+│   ├── LoginPage.vue
+│   ├── DashboardHome.vue
+│   └── UsersPage.vue
+│
+├── router/
+│   └── index.js
+│
+└── store/
+    └── auth.js
