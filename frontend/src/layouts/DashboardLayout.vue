@@ -1,7 +1,7 @@
 <!-- layouts/DashboardLayout.vue -->
 <template>
   <div
-    class="flex min-h-screen relative transition-colors duration-300"
+    class="h-screen overflow-hidden relative transition-colors duration-300"
     :class="theme === 'dark'
       ? 'bg-slate-900 text-gray-100'
       : 'bg-gray-50 text-gray-800'"
@@ -13,19 +13,16 @@
       @click="closeSidebar"
     ></div>
 
-    <!-- SIDEBAR -->
+    <!-- SIDEBAR (FIXED – TIDAK IKUT FLEX) -->
     <Sidebar
-      class="z-40"
+      class="fixed inset-y-0 left-0 z-40 transition-all duration-300"
       :class="[
+        collapsed ? 'w-20' : 'w-64',
         isMobile
-          ? 'fixed inset-y-0 left-0 transform transition-transform duration-300 lg:hidden'
-          : 'relative',
-
-        sidebarOpen
-          ? 'translate-x-0'
-          : isMobile
-            ? '-translate-x-full'
-            : ''
+          ? sidebarOpen
+            ? 'translate-x-0'
+            : '-translate-x-full'
+          : 'translate-x-0'
       ]"
       :collapsed="collapsed"
       :theme="theme"
@@ -37,10 +34,14 @@
 
     <!-- MAIN AREA -->
     <div
-      class="flex-1 flex flex-col transition-colors duration-300"
-      :class="theme === 'dark'
-        ? 'bg-slate-900 text-gray-100'
-        : 'bg-white text-gray-800'"
+      class="flex flex-col h-full transition-all duration-300"
+      :style="{
+        marginLeft: !isMobile
+          ? collapsed
+            ? '5rem'   // w-20
+            : '16rem'  // w-64
+          : '0'
+      }"
     >
       <!-- TOPBAR -->
       <Topbar
@@ -49,13 +50,16 @@
         :notificationsCount="notificationsCount"
         :userNavigation="userNavigation"
         :roleName="auth.user?.roles_name"
+        :isMobile="isMobile"
         @logout="logout"
         @openSidebarMobile="openSidebar"
       />
 
       <!-- CONTENT -->
       <main
-        class="flex-1 p-4 sm:p-6 lg:p-8 transition-colors duration-300"
+        class="p-4 sm:p-6 lg:p-8
+               h-[calc(100vh-4rem)]
+               overflow-y-auto transition-colors duration-300"
         :class="theme === 'dark'
           ? 'bg-slate-900 text-gray-100'
           : 'bg-gray-50 text-gray-800'"
@@ -79,7 +83,7 @@ const auth = useAuthStore();
 const router = useRouter();
 
 /* ======================================
-   THEME CONTROL
+   THEME
 ====================================== */
 const theme = ref(localStorage.getItem("theme") || "dark");
 const collapsed = ref(false);
@@ -95,12 +99,14 @@ watch(
   { immediate: true }
 );
 
-const toggleCollapse = () => (collapsed.value = !collapsed.value);
+const toggleCollapse = () => {
+  collapsed.value = !collapsed.value;
+};
 
 /* ======================================
-   RESPONSIVE MOBILE
+   RESPONSIVE
 ====================================== */
-const isMobile = ref(window.innerWidth < 1024);
+const isMobile = ref(false);
 const sidebarOpen = ref(false);
 
 const handleResize = () => {
@@ -108,19 +114,28 @@ const handleResize = () => {
   if (!isMobile.value) sidebarOpen.value = false;
 };
 
-const openSidebar = () => (sidebarOpen.value = true);
-const closeSidebar = () => (sidebarOpen.value = false);
+const openSidebar = () => {
+  if (isMobile.value) sidebarOpen.value = true;
+};
 
-onMounted(() => window.addEventListener("resize", handleResize));
-onUnmounted(() => window.removeEventListener("resize", handleResize));
+const closeSidebar = () => {
+  sidebarOpen.value = false;
+};
+
+onMounted(() => {
+  handleResize();
+  window.addEventListener("resize", handleResize);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("resize", handleResize);
+});
 
 /* ======================================
-   MENU DINAMIS (PENTING)
+   MENU DINAMIS
 ====================================== */
+const resolveIcon = (name) => Icons[name] ?? Icons.Menu;
 
-const resolveIcon = (name) => Icons[name] ?? Icons["Menu"];
-
-/* Membentuk struktur parent → children */
 function buildTree(menuList) {
   const map = {};
   const roots = [];
@@ -132,15 +147,14 @@ function buildTree(menuList) {
       path: m.url_menu,
       icon: resolveIcon(m.icon_menu),
       children: [],
-      open: false, // untuk expand/collapse submenu
     };
   });
 
   menuList.forEach((m) => {
     if (m.parent_id) {
-      map[m.parent_id].children.push(map[m.id_menu]);
+      map[m.parent_id]?.children.push(map[m.id_menu]);
     } else {
-      roots.push(map[m.id_menu]); // parent level 0
+      roots.push(map[m.id_menu]);
     }
   });
 
@@ -149,17 +163,15 @@ function buildTree(menuList) {
 
 const menu = ref([]);
 
-/* Ambil menu dari backend → convert → tree */
 onMounted(async () => {
   if (!auth.user) await auth.loadToken();
-
-  if (auth.menu && Array.isArray(auth.menu)) {
-    menu.value = buildTree(auth.menu); // ← FIX PENTING
+  if (Array.isArray(auth.menu)) {
+    menu.value = buildTree(auth.menu);
   }
 });
 
 /* ======================================
-   NOTIFICATIONS & PROFILE MENU
+   USER
 ====================================== */
 const notificationsCount = ref(3);
 

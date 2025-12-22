@@ -3,11 +3,11 @@
   <div class="flex min-h-full flex-1 flex-col justify-center py-12 sm:px-6 lg:px-8">
     <!-- Logo + Title -->
     <div class="sm:mx-auto sm:w-full sm:max-w-md">
-      <img class="mx-auto h-10 w-auto" src="../assets/logo_koe.png" alt="Your Company" />
+      <img class="mx-auto h-50 w-auto" src="../assets/logo_koe.png" alt="Your Company" />
       <h2 class="mt-1 text-center text-2xl/9 font-bold tracking-tight text-gray-900">Sign in to your account</h2>
     </div>
     
-    <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-[480px]">
+    <div class="mt-3 sm:mx-auto sm:w-full sm:max-w-[480px]">
       <!-- GLOBAL MAINTENANCE ALERT -->
       <transition name="fade">
         <div
@@ -141,10 +141,7 @@
   <!-- ========================= -->
   <!-- MODAL PILIH ROLE (BARU) -->
   <!-- ========================= -->
-  <div
-    v-if="showRoleModal"
-    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-  >
+  <div v-if="showRoleModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-lg p-6 w-[380px]">
       <!-- INFO MESSAGE -->
       <div
@@ -382,6 +379,7 @@ onMounted(() => {
 
 const login = async () => {
   isSubmitted.value = true;
+
   // clear any pending error timeout so server response is shown reliably
   if (errorTimeout) {
     clearTimeout(errorTimeout);
@@ -403,8 +401,8 @@ const login = async () => {
   }
   // -------------------------
 
-  const data = loadBlocked(email.value);
-  if (data && countdown.value > 0) {
+  const dataBlocked = loadBlocked(email.value);
+  if (dataBlocked && countdown.value > 0) {
     setError(`Akun sementara terkunci. Silakan tunggu ${formatTime(countdown.value)}`);
     return;
   }
@@ -414,7 +412,10 @@ const login = async () => {
 
   try {
     // PENTING: auth.login kemungkinan mengembalikan axios response
-    const res = await auth.login({ email: email.value, password: password.value });
+    const res = await auth.login({
+      email: email.value,
+      password: password.value,
+    });
 
     // normalisasi response: kalau axios -> res.data, kalau store sudah unwrap -> res
     const data = res?.data ?? res;
@@ -426,17 +427,17 @@ const login = async () => {
     // CEK MULTI ROLE
     // ================
     if (data?.needSelectRole) {
-      roles.value = data.roles || [];        // pastikan roles array
-      userId = data.user?.id ?? null;        // simpan user id dari payload
+      roles.value = Array.isArray(data.roles) ? data.roles : [];
+      userId = data.user?.id ?? null;
       showRoleModal.value = true;
       loading.value = false;
       return;
     }
 
     // jika hanya satu role → login langsung, backend mengirim token + user
+    // token SUDAH disimpan di auth.login()
     if (data?.token) {
-      auth.setToken(data.token); // asumsi store menerima token set
-      // optionally set user info in store here
+      // tidak perlu setToken lagi (hindari race condition)
     }
 
     // jika hanya satu role → langsung login
@@ -449,8 +450,15 @@ const login = async () => {
 
       if (err.response.data.blockedUntil) {
         // jika server mengirim info blocked, mulai countdown dan simpan ke localStorage
-        startCountdown(err.response.data.blockedUntil, err.response.data.failCount);
-        saveBlocked(email.value, err.response.data.blockedUntil, err.response.data.failCount);
+        startCountdown(
+          err.response.data.blockedUntil,
+          err.response.data.failCount
+        );
+        saveBlocked(
+          email.value,
+          err.response.data.blockedUntil,
+          err.response.data.failCount
+        );
       }
     } else {
       setError("Login gagal, silakan coba lagi!");
@@ -471,6 +479,9 @@ const roleInfoMessage = computed(() => {
 });
 
 
+// ===========================
+// Multi Roles Login (BARU)
+// ===========================
 // ===========================
 // Multi Roles Login (BARU)
 // ===========================
@@ -498,7 +509,7 @@ const confirmRole = async () => {
       Swal.fire({
         icon: "warning",
         title: "Akses Ditolak",
-        text: data.message || "Tidak ada izin aktif untuk akun Anda"
+        text: data.message || "Tidak ada izin aktif untuk akun Anda",
       });
 
       loading.value = false;
@@ -509,8 +520,8 @@ const confirmRole = async () => {
       throw new Error("Token final tidak diterima dari server");
     }
 
-    // simpan token final
-    auth.setToken(data.token);
+    // token SUDAH disimpan di auth.selectRole()
+    // jangan setToken ulang (hindari race condition)
 
     // tutup modal & lanjut
     showRoleModal.value = false;
@@ -521,6 +532,7 @@ const confirmRole = async () => {
     loading.value = false;
   }
 };
+
 </script>
 
 <style>
@@ -578,8 +590,4 @@ const confirmRole = async () => {
   box-shadow: 0 0 3px #ba55ff, 0 0 8px #ba55ff;
 }
 
-
-
 </style>
-
-

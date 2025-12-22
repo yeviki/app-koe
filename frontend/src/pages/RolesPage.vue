@@ -3,45 +3,31 @@
   <div>
     <!-- Header -->
     <div class="flex justify-between mb-4 items-center">
-      <h1 class="text-3xl font-bold">Roles Management</h1>
-
+      
+      <!-- LEFT: Title + Toggle -->
       <div class="flex items-center gap-4">
+        <h1 class="text-3xl font-bold">Roles Management</h1>
 
         <!-- 🔥 Toggle Maintenance -->
         <label class="relative inline-flex items-center cursor-pointer select-none">
-
-          <!-- Toggle background -->
           <div
             class="group relative inline-flex w-16 h-7 shrink-0 rounded-full p-0.5
                   bg-gray-300 transition-all duration-300
                   has-checked:bg-green-500"
           >
-
-            <!-- Handle + Text -->
+            <!-- Handle -->
             <span
               class="absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white shadow-md
                     ring-1 ring-black/10 flex items-center justify-center text-[9px] font-bold
-                    transition-all duration-300 select-none
+                    transition-all duration-300
                     group-has-checked:translate-x-9"
             >
-              <!-- OFF text -->
-              <span
-                class="absolute transition-opacity duration-200
-                      group-has-checked:opacity-0"
-              >
-                OFF
-              </span>
-
-              <!-- ON text -->
-              <span
-                class="absolute opacity-0 text-green-600 transition-opacity duration-200
-                      group-has-checked:opacity-100"
-              >
+              <span class="absolute group-has-checked:opacity-0">OFF</span>
+              <span class="absolute opacity-0 group-has-checked:opacity-100 text-green-600">
                 ON
               </span>
             </span>
 
-            <!-- Checkbox -->
             <input
               type="checkbox"
               class="absolute inset-0 appearance-none"
@@ -50,16 +36,15 @@
             />
           </div>
         </label>
-
-        <!-- Tombol Tambah -->
-        <button
-          @click="openAdd"
-          class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500"
-        >
-          Tambah Roles
-        </button>
-
       </div>
+
+      <!-- RIGHT: Button -->
+      <button
+        @click="openAdd"
+        class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500"
+      >
+        Tambah Roles
+      </button>
     </div>
 
 

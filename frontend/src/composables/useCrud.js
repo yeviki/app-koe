@@ -1,5 +1,5 @@
 // composables/useCrud.js
-import { ref, reactive } from "vue";
+import { ref, reactive, onUnmounted } from "vue";
 import api from "../api/axios";
 import { validate } from "../utils/validator";
 import Swal from "sweetalert2";
@@ -18,11 +18,20 @@ import Swal from "sweetalert2";
  * - idField: nama field id di form (default 'id')
  */
 export function useCrud(endpoint, options = {}) {
+
+  // ===============================
+  // LIFECYCLE GUARD (🔥 TAMBAHAN AMAN)
+  // ===============================
+  let isActive = true;
+  onUnmounted(() => {
+    isActive = false;
+  });
+
   // --- Config ---
   const defaultForm = options.defaultForm || {};
   const mapResponse = options.mapResponse || ((res) => res);
   const transformForm = options.transformForm || ((form) => form);
-  const idField = options.idField || "id"; // nama field ID, bisa diubah tiap form
+  const idField = options.idField || "id";
 
   const rules = options.rules || {};
   const rulesCreate = options.rulesCreate || {};
@@ -34,13 +43,13 @@ export function useCrud(endpoint, options = {}) {
   const afterDelete = options.afterDelete || null;
 
   // --- State ---
-  const items = ref([]); // data list
-  const loading = ref(false); // loading state
-  const form = reactive(structuredClone(defaultForm)); // form reactive
-  const errors = reactive({}); // validation errors
-  const isEdit = ref(false); // apakah edit mode
-  const showModal = ref(false); // control modal
-  const query = reactive({}); // search/filter
+  const items = ref([]);
+  const loading = ref(false);
+  const form = reactive(structuredClone(defaultForm));
+  const errors = reactive({});
+  const isEdit = ref(false);
+  const showModal = ref(false);
+  const query = reactive({});
   const pagination = reactive({
     page: 1,
     perPage: 10,
@@ -78,12 +87,15 @@ export function useCrud(endpoint, options = {}) {
       const { data } = await api.get(endpoint, {
         params: { page: pagination.page, per_page: pagination.perPage, ...query },
       });
+
+      if (!isActive) return;
+
       items.value = mapResponse(extractList(data));
       const pg = extractPagination(data);
       pagination.total = pg.total;
       pagination.lastPage = pg.lastPage;
     } finally {
-      loading.value = false;
+      if (isActive) loading.value = false;
     }
   };
 
@@ -92,10 +104,13 @@ export function useCrud(endpoint, options = {}) {
     loading.value = true;
     try {
       const { data } = await api.get(`${endpoint}/${id}`);
+
+      if (!isActive) return null;
+
       if (assignToForm) Object.assign(form, data);
       return data;
     } finally {
-      loading.value = false;
+      if (isActive) loading.value = false;
     }
   };
 
@@ -118,7 +133,7 @@ export function useCrud(endpoint, options = {}) {
     }
 
     // 🔥 WAJIB: Pastikan password kosong saat edit
-    form.password = "";
+    if ("password" in form) form.password = "";
 
     if (typeof form.roles_id === "string") {
       form.roles_id = form.roles_id.split(",").map(x => parseInt(x));
@@ -127,9 +142,7 @@ export function useCrud(endpoint, options = {}) {
     showModal.value = true;
   };
 
-
-  // --- Validasi unik di client-side (untuk title/url dll) ---
-  // Saat edit, sendiri diabaikan
+  // --- Validasi unik di client-side ---
   const validateUnique = (key, value) => {
     return !items.value.some(
       (i) => i[key] === value && (!isEdit.value || i[idField] !== form[idField])
@@ -142,13 +155,12 @@ export function useCrud(endpoint, options = {}) {
     Object.keys(errors).forEach((k) => delete errors[k]);
 
     try {
-      // Tentukan rules sesuai mode
-      const activeRules = isEdit.value ? { ...rules, ...rulesUpdate } : { ...rules, ...rulesCreate };
+      const activeRules = isEdit.value
+        ? { ...rules, ...rulesUpdate }
+        : { ...rules, ...rulesCreate };
 
-      // Validasi client-side
       const validation = validate(form, activeRules);
 
-      // Cek unique di client-side jika ada 'unique' di rules
       for (const key in activeRules) {
         if (activeRules[key].includes("unique") && !validateUnique(key, form[key])) {
           validation[key] = `${key} sudah digunakan`;
@@ -163,11 +175,17 @@ export function useCrud(endpoint, options = {}) {
 
       if (beforeSave) await beforeSave(form);
 
-      const payload = transformForm(form);
+      let payload = transformForm(form);
       const method = isEdit.value ? "put" : "post";
       const url = isEdit.value ? `${endpoint}/${form[idField]}` : endpoint;
 
+      if (hasFile(payload)) {
+        payload = toFormData(payload);
+      }
+
       await api[method](url, payload);
+
+      if (!isActive) return false;
 
       await load();
       showModal.value = false;
@@ -176,9 +194,9 @@ export function useCrud(endpoint, options = {}) {
       if (afterSave) afterSave();
       return true;
     } catch (e) {
+      if (!isActive) return false;
 
-      // 🔥 Akses Ditolak (403)
-      if (e.response?.status === 403) {
+      if (e.response?.status === 403 || e.response?.status === 440) {
         Swal.fire({
           icon: "error",
           title: "Akses Ditolak!",
@@ -189,35 +207,17 @@ export function useCrud(endpoint, options = {}) {
         return false;
       }
 
-      // 🔥 Akses Ditolak (440)
-      if (e.response?.status === 440) {
-        Swal.fire({
-          icon: "error",
-          title: "Sistem Maintenance!",
-          text: e.response.data.message || "Akses ditutup untuk aksi ini",
-          confirmButtonColor: "#d33",
-        });
-        loading.value = false;
-        return false;
-      }
-
-      // Backend kirim: { fields: { roles_name: "..."} }
       if (e.response?.data?.fields) {
         Object.assign(errors, e.response.data.fields);
-      }
-
-      // Jika backend kirim errors (format lain)
-      else if (e.response?.data?.errors) {
+      } else if (e.response?.data?.errors) {
         Object.assign(errors, e.response.data.errors);
-      }
-
-      // Jika hanya message
-      else if (e.response?.data?.message) {
+      } else if (e.response?.data?.message) {
         errors.general = e.response.data.message;
       }
+
       return false;
     } finally {
-      loading.value = false;
+      if (isActive) loading.value = false;
     }
   };
 
@@ -227,40 +227,59 @@ export function useCrud(endpoint, options = {}) {
       const ok = await beforeDelete(id);
       if (!ok) return;
     }
+
     loading.value = true;
     try {
       await api.delete(`${endpoint}/${id}`);
+
+      if (!isActive) return;
+
       await load();
       if (afterDelete) afterDelete();
-    } catch (e) {
-
-      // 🔥 Akses Ditolak (403)
-      if (e.response?.status === 403) {
-        Swal.fire({
-          icon: "error",
-          title: "Akses Ditolak!",
-          text: e.response.data.message || "Akses ditutup untuk aksi ini",
-          confirmButtonColor: "#d33",
-        });
-        loading.value = false;
-        return false;
-      }
-
-      // 🔥 Akses Ditolak (440)
-      if (e.response?.status === 440) {
-        Swal.fire({
-          icon: "error",
-          title: "Sistem Maintenance!",
-          text: e.response.data.message || "Akses ditutup untuk aksi ini",
-          confirmButtonColor: "#d33",
-        });
-        loading.value = false;
-        return false;
-      }
-
     } finally {
-      loading.value = false;
+      if (isActive) loading.value = false;
     }
+  };
+
+  // helper: cek apakah object mengandung File / Blob (deep)
+  const hasFile = (obj) => {
+    if (!obj || typeof obj !== "object") return false;
+
+    return Object.values(obj).some((v) => {
+      if (v instanceof File || v instanceof Blob) return true;
+      if (Array.isArray(v)) return v.some(i => i instanceof File || i instanceof Blob);
+      if (typeof v === "object") return hasFile(v);
+      return false;
+    });
+  };
+
+  // helper: convert object ke FormData (GLOBAL)
+  const toFormData = (obj) => {
+    const fd = new FormData();
+
+    Object.entries(obj).forEach(([key, value]) => {
+      if (key.endsWith("_url")) return;
+      if (value === null || value === undefined) return;
+
+      if (Array.isArray(value)) {
+        value.forEach((v) => fd.append(`${key}[]`, v));
+        return;
+      }
+
+      if (value instanceof File || value instanceof Blob) {
+        fd.append(key, value);
+        return;
+      }
+
+      if (typeof value === "object") {
+        fd.append(key, JSON.stringify(value));
+        return;
+      }
+
+      fd.append(key, value);
+    });
+
+    return fd;
   };
 
   // --- Ganti page pagination ---

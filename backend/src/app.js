@@ -1,4 +1,5 @@
 require("dotenv").config();
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -71,14 +72,49 @@ app.get("/", (req, res) => {
   res.send("API running...");
 });
 
-app.use("/api/auth", require("./routes/authRoutes"));
-app.use("/api/users", require("./routes/userRoutes"));
-app.use("/api/menu", require("./routes/menuRoutes"));
-app.use("/api/roles", require("./routes/rolesRoutes"));
-app.use("/api/module", require("./routes/moduleRoutes"));
-app.use("/api/control", require("./routes/controlRoutes"));
-app.use("/api/system", require("./routes/systemRoutes"));
-app.use("/api/master", require("./routes/masterRoutes"));
+// ===============================
+// API MANAGEMENT PROJECT
+// ===============================
+app.use("/api/auth", require("./routes/management/authRoutes"));
+app.use("/api/users", require("./routes/management/userRoutes"));
+app.use("/api/menu", require("./routes/management/menuRoutes"));
+app.use("/api/roles", require("./routes/management/rolesRoutes"));
+app.use("/api/module", require("./routes/management/moduleRoutes"));
+app.use("/api/control", require("./routes/management/controlRoutes"));
+app.use("/api/system", require("./routes/management/systemRoutes"));
+app.use("/api/master", require("./routes/management/masterRoutes"));
+
+// External Public Routes
+// Ambil data file upload dari server atau backend
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "../uploads"))
+);
+// Heandle Error Upload
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({
+      message: err.message,
+    });
+  }
+
+  if (err.message?.includes("File tidak valid")) {
+    return res.status(400).json({
+      message: err.message,
+    });
+  }
+
+  next(err);
+});
+// ===============================
+// API EXTERNAL
+// ===============================
+app.use("/api/nasabah", require("./routes/external/nasabahRoutes"));
+app.use("/api/tabungan", require("./routes/external/tabunganRoutes"));
+app.use("/api/pinjaman", require("./routes/external/pinjamanRoutes"));
+app.use("/api/angsuran", require("./routes/external/angsuranRoutes"));
+app.use("/api/dashboard", require("./routes/external/dashboardRoutes"));
+
 
 // ===============================
 // GLOBAL ERROR HANDLER

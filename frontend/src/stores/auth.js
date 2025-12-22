@@ -191,13 +191,25 @@ export const useAuthStore = defineStore("auth", {
       this.token = null;
       this.menu = [];
       this.menuTree = [];
+      this.routesLoaded = false; // ⬅️ RESET
 
       localStorage.removeItem("token");
 
-      // router push aman
       setTimeout(() => {
         router.push("/login");
       }, 50);
     }
   },
+
+  // stores/auth.js
+  state: () => ({
+    user: null,
+    token: localStorage.getItem("token") || null,
+
+    menu: [],
+    menuTree: [],
+
+    routesLoaded: false, // ⬅️ PINDAH KE STORE
+  }),
+
 });

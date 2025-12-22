@@ -9,31 +9,31 @@
     ]"
   >
     <!-- LEFT: MOBILE MENU BUTTON -->
-    <button
-      class="lg:hidden p-2 rounded-lg mr-3"
-      @click="$emit('openSidebarMobile')"
-      :class="theme === 'dark'
-        ? 'text-gray-100 hover:bg-slate-700/50'
-        : 'text-gray-800 hover:bg-gray-200/70'"
-    >
-      <Bars3Icon class="w-6 h-6" />
-    </button>
-
-    <!-- Title Section -->
-    <div>
-      <h1
-        :class="[
-          'text-xl font-semibold flex flex-col leading-tight',
-          theme === 'dark' ? 'text-white' : 'text-gray-900'
-        ]"
+    <!-- LEFT GROUP -->
+    <div class="flex items-center gap-3 min-w-0">
+      <!-- MOBILE BUTTON -->
+      <button
+        class="lg:hidden p-2 rounded-lg"
+        @click="$emit('openSidebarMobile')"
+        :class="theme === 'dark'
+          ? 'text-gray-100 hover:bg-slate-700/50'
+          : 'text-gray-800 hover:bg-gray-200/70'"
       >
-        {{ title }}
+        <Bars3Icon class="w-6 h-6" />
+      </button>
 
-        <!-- ★ Added: Display Role Name or Role ID -->
-        <span class="text-[11px] text-indigo-500 mt-0.5">
+      <!-- TITLE -->
+      <div class="min-w-0">
+        <h1
+          class="text-xl font-semibold leading-tight truncate"
+          :class="theme === 'dark' ? 'text-white' : 'text-gray-900'"
+        >
+          {{ title }}
+        </h1>
+        <span class="text-[11px] font-semibold text-indigo-500 truncate">
           {{ roleLabel }}
         </span>
-      </h1>
+      </div>
     </div>
 
     <!-- Right Section -->

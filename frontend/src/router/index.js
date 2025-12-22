@@ -43,7 +43,7 @@ const router = createRouter({
 });
 
 // Flag agar dynamic routes hanya di-load sekali
-let isDynamicRouteLoaded = false;
+// let isDynamicRouteLoaded = false;
 
 // ====================================================
 // ROUTER GUARD
@@ -51,45 +51,49 @@ let isDynamicRouteLoaded = false;
 router.beforeEach(async (to, from, next) => {
   const auth = useAuthStore();
 
-  // saat refresh → cek token + load user/menu
-  await auth.loadToken();
+  // =========================
+  // LOAD TOKEN & MENU (REFRESH SAFE)
+  // =========================
+  if (auth.token && !auth.user) {
+    try {
+      await auth.loadToken();
+    } catch (e) {
+      auth.logout();
+      return next("/login");
+    }
+  }
 
-  // =====================================
-  // LOAD DYNAMIC ROUTES (HANYA SEKALI)
-  // =====================================
-  if (auth.isLoggedIn && !isDynamicRouteLoaded) {
-    const dynamicRoutes = auth.generateRoutesFromMenu(auth.menuTree);
+  // =========================
+  // LOAD DYNAMIC ROUTES
+  // =========================
+  if (auth.isLoggedIn && !auth.routesLoaded) {
+    const routes = auth.generateRoutesFromMenu(auth.menuTree);
 
-    dynamicRoutes.forEach((r) => {
-      if (!routeExists(r.name)) {
-        router.addRoute("DashboardRoot", {
-          ...r,
-          path: r.path.startsWith("/") ? r.path : "/" + r.path,
-        });
+    routes.forEach((r) => {
+      if (!router.hasRoute(r.name)) {
+        router.addRoute("DashboardRoot", r);
       }
     });
 
-    isDynamicRouteLoaded = true;
+    auth.routesLoaded = true;
 
-    // ulangi tujuan setelah route terdaftar
+    // ⚠️ PENTING: ulangi navigasi
     return next({ ...to, replace: true });
   }
 
-  // =================================
-  // BUTUH LOGIN
-  // =================================
+  // =========================
+  // AUTH GUARD
+  // =========================
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return next("/login");
   }
 
-  // =================================
-  // SUDAH LOGIN, TAPI KE LOGIN PAGE
-  // =================================
   if (to.meta.guest && auth.isLoggedIn) {
     return next("/dashboard");
   }
 
   next();
 });
+
 
 export default router;
