@@ -1,13 +1,10 @@
-// controllers/public/nasabahController.js
-const fs = require("fs");
-const path = require("path");
+const { uploadFiles } = require("../../utils/minioUploader");
+const { deleteFiles } = require("../../utils/minioCleaner");
+const { getPresignedUrlFromMinio } = require("../../middlewares/minio");
 
 const ModelData = require("../../models/public/nasabahModel");
-const { buildFileUrl } = require("../../utils/file");
 const { sanitize } = require("../../utils/validate");
 
-// lokasi upload
-const uploadDir = path.join(__dirname, "../../../uploads/nasabah");
 const FILE_FIELDS = [
   "foto_ktp",
   "foto_nasabah",
@@ -17,13 +14,8 @@ const FILE_FIELDS = [
 ];
 
 // ===============================
-// HELPER INTERNAL
+// HELPER
 // ===============================
-const getFileName = (files, field) => {
-  if (!files || !files[field]) return undefined;
-  return files[field][0].filename;
-};
-
 const fieldError = (fields, code = 400) => {
   const err = new Error("Validation Error");
   err.status = code;
@@ -31,42 +23,28 @@ const fieldError = (fields, code = 400) => {
   throw err;
 };
 
-// hapus file helper (AMAN)
-const deleteFileIfExists = (filename) => {
-  if (!filename) return;
-
-  const filePath = path.join(uploadDir, filename);
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-  }
-};
-
-// Tutup Helper
-
-// ambil payload
-const getNasabahPayload = (body, files) => ({
+// payload dari body + hasil upload MinIO
+const getNasabahPayload = (body, uploadedFiles = {}) => ({
   no_hp: sanitize(body.no_hp),
   nm_nasabah: sanitize(body.nm_nasabah),
   alamat: body.alamat,
   id_status: body.id_status,
-  
-  foto_ktp: getFileName(files, "foto_ktp"),
-  foto_nasabah: getFileName(files, "foto_nasabah"),
-  foto_rumah: getFileName(files, "foto_rumah"),
-  foto_usaha: getFileName(files, "foto_usaha"),
-  foto_promise: getFileName(files, "foto_promise"),
+
+  foto_ktp: uploadedFiles.foto_ktp,
+  foto_nasabah: uploadedFiles.foto_nasabah,
+  foto_rumah: uploadedFiles.foto_rumah,
+  foto_usaha: uploadedFiles.foto_usaha,
+  foto_promise: uploadedFiles.foto_promise,
 });
 
 // validasi duplikat
 const validateDuplicateNoHp = async (no_hp, id = null) => {
   let exist;
-
   if (id) {
     [exist] = await ModelData.checkDuplicateOnUpdate(id, no_hp);
   } else {
     [exist] = await ModelData.checkDuplicate(no_hp);
   }
-
   if (exist.length > 0) {
     fieldError({ no_hp: "No HP sudah digunakan" });
   }
@@ -78,8 +56,6 @@ const validateDuplicateNoHp = async (no_hp, id = null) => {
 exports.getNasabah = async (req, res, next) => {
   try {
     let currentRoles = req.user.roles_id;
-
-    // normalisasi roles → array
     if (!Array.isArray(currentRoles)) {
       currentRoles = currentRoles ? [currentRoles] : [];
     }
@@ -93,34 +69,40 @@ exports.getNasabah = async (req, res, next) => {
         .json({ message: "Role tidak ditemukan dalam token" });
     }
 
-    const userId = req.user.id; // id user login
-
+    const userId = req.user.id;
     let rows;
 
-    // =========================
-    // ROLE FILTER
-    // =========================
     if ([1, 2].includes(primaryRole)) {
-      // ADMIN / SUPERUSER → semua data
       [rows] = await ModelData.getAll();
     } else if (primaryRole === 4) {
-      // USER → hanya data milik sendiri
       [rows] = await ModelData.getByUser(userId);
     } else {
-      // role lain (opsional)
       return res.status(403).json({
         message: "Anda tidak memiliki akses ke data nasabah",
       });
     }
 
-    const data = rows.map(row => ({
-      ...row,
-      foto_ktp_url: buildFileUrl("nasabah", row.foto_ktp),
-      foto_nasabah_url: buildFileUrl("nasabah", row.foto_nasabah),
-      foto_rumah_url: buildFileUrl("nasabah", row.foto_rumah),
-      foto_usaha_url: buildFileUrl("nasabah", row.foto_usaha),
-      foto_promise_url: buildFileUrl("nasabah", row.foto_promise),
-    }));
+    // presigned URL
+    const data = await Promise.all(
+      rows.map(async row => ({
+        ...row,
+        foto_ktp_url: row.foto_ktp
+          ? await getPresignedUrlFromMinio(row.foto_ktp, 3600)
+          : null,
+        foto_nasabah_url: row.foto_nasabah
+          ? await getPresignedUrlFromMinio(row.foto_nasabah, 3600)
+          : null,
+        foto_rumah_url: row.foto_rumah
+          ? await getPresignedUrlFromMinio(row.foto_rumah, 3600)
+          : null,
+        foto_usaha_url: row.foto_usaha
+          ? await getPresignedUrlFromMinio(row.foto_usaha, 3600)
+          : null,
+        foto_promise_url: row.foto_promise
+          ? await getPresignedUrlFromMinio(row.foto_promise, 3600)
+          : null,
+      }))
+    );
 
     res.json(data);
   } catch (err) {
@@ -128,104 +110,99 @@ exports.getNasabah = async (req, res, next) => {
   }
 };
 
+// ===============================
+// CREATE
+// ===============================
 exports.createNasabah = async (req, res, next) => {
   try {
-    const data = getNasabahPayload(req.body, req.files);
-    const userId = req.user.id; // pastikan ini ada dari login
+    const userId = req.user.id;
 
-    
-    await validateDuplicateNoHp(data.no_hp);
-    
-    // override beberapa field otomatis
+    await validateDuplicateNoHp(req.body.no_hp);
+
+    // upload ke MinIO (parallel + rollback)
+    const uploadedFiles = await uploadFiles({
+      files: req.files,
+      folder: "nasabah",
+      ownerId: userId,
+      totalMaxSize: 5 * 1024 * 1024,
+    });
+
+    const data = getNasabahPayload(req.body, uploadedFiles);
     data.id_users = userId;
-    
+
     await ModelData.create(data);
 
     res.json({ message: "Data berhasil ditambahkan" });
   } catch (err) {
-    // rollback SEMUA file
-    if (req.files) {
-      Object.values(req.files).flat().forEach(f =>
-        deleteFileIfExists(f.filename)
-      );
-    }
     next(err);
   }
 };
 
+// ===============================
+// UPDATE
+// ===============================
 exports.updateNasabah = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const [oldRows] = await ModelData.getById(id);
-    if (oldRows.length === 0) {
+    const [rows] = await ModelData.getById(id);
+    if (!rows.length) {
       fieldError({ general: "Data tidak ditemukan" }, 404);
     }
 
-    const oldData = oldRows[0];
-    const data = getNasabahPayload(req.body, req.files);
+    await validateDuplicateNoHp(req.body.no_hp, id);
 
-    await validateDuplicateNoHp(data.no_hp, id);
-
-    // kalau field tidak upload → jangan update
-    Object.keys(data).forEach(key => {
-      if (data[key] === undefined) delete data[key];
+    const uploadedFiles = await uploadFiles({
+      files: req.files,
+      folder: "nasabah",
+      ownerId: id,
     });
+
+    const data = getNasabahPayload(req.body, uploadedFiles);
+
+    Object.keys(data).forEach(k => data[k] === undefined && delete data[k]);
 
     await ModelData.update(id, data);
 
-    // hapus file lama jika diganti
-    if (req.files) {
-      for (const field in req.files) {
-        if (oldData[field]) {
-          deleteFileIfExists(oldData[field]);
-        }
-      }
-    }
+    // hapus file lama yang diganti
+    await deleteFiles(
+      Object.keys(uploadedFiles).map(field => rows[0][field])
+    );
 
     res.json({ message: "Data berhasil diupdate" });
   } catch (err) {
-    if (req.files) {
-      Object.values(req.files).flat().forEach(f =>
-        deleteFileIfExists(f.filename)
-      );
-    }
     next(err);
   }
 };
 
+// ===============================
+// DELETE
+// ===============================
 exports.deleteNasabah = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    // 1. cek data nasabah
     const [rows] = await ModelData.getById(id);
-    if (rows.length === 0) {
+    if (!rows.length) {
       fieldError({ general: "Data tidak ditemukan" }, 404);
     }
 
-    // 2. cek transaksi
     const [trx] = await ModelData.checkTransaksi(id);
     if (trx.length > 0) {
       fieldError(
-        { general: "Data nasabah sudah memiliki transaksi dan tidak dapat dihapus" },
-        409 // conflict
+        { general: "Data nasabah sudah memiliki transaksi" },
+        409
       );
     }
 
-    const data = rows[0];
-
-    // 3. hapus data DB
     await ModelData.delete(id);
 
-    // 4. hapus semua file fisik
-    FILE_FIELDS.forEach(field => {
-      deleteFileIfExists(data[field]);
-    });
+    await deleteFiles(
+      FILE_FIELDS.map(field => rows[0][field])
+    );
 
     res.json({ message: "Data berhasil dihapus" });
   } catch (err) {
     next(err);
   }
 };
-

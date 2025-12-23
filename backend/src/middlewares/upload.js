@@ -1,50 +1,44 @@
 // middlewares/upload.js
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
 
 /**
- * upload middleware (GLOBAL)
+ * upload middleware (MINIO VERSION)
  *
  * config:
- * - destination   : folder upload
  * - allowedMime   : array mime type
  * - maxSize       : max file size
  * - single        : "fieldName"
  * - fields        : [{ name, maxCount }]
+ *
+ * NOTE:
+ * - storage pakai memoryStorage (WAJIB untuk MinIO)
+ * - destination DIABAIKAN
  */
 module.exports = ({
-  destination = "uploads",
   allowedMime = ["image/jpeg", "image/png"],
   maxSize = 2 * 1024 * 1024, // 2MB
   single = null,
   fields = null,
 }) => {
-  // pastikan folder ada
-  if (!fs.existsSync(destination)) {
-    fs.mkdirSync(destination, { recursive: true });
-  }
+  // ===============================
+  // STORAGE (MINIO WAJIB)
+  // ===============================
+  const storage = multer.memoryStorage();
 
-  const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, destination);
-    },
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname);
-      const unique =
-        Date.now() + "-" + Math.round(Math.random() * 1e9);
-      cb(null, unique + ext);
-    },
-  });
-
+  // ===============================
+  // FILE FILTER
+  // ===============================
   const fileFilter = (req, file, cb) => {
-    if (!allowedMime.includes(file.mimetype)) {
+    if (
+      Array.isArray(allowedMime) &&
+      allowedMime.length > 0 &&
+      !allowedMime.includes(file.mimetype)
+    ) {
       return cb(
         new Error(
-          `File tidak valid. Hanya diperbolehkan: ${allowedMime.join(
-            ", "
-          )}`
-        )
+          `File tidak valid. Hanya diperbolehkan: ${allowedMime.join(", ")}`
+        ),
+        false
       );
     }
     cb(null, true);
