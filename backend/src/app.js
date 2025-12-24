@@ -110,10 +110,6 @@ app.use((err, req, res, next) => {
 // API EXTERNAL
 // ===============================
 app.use("/api/nasabah", require("./routes/external/nasabahRoutes"));
-app.use("/api/tabungan", require("./routes/external/tabunganRoutes"));
-app.use("/api/pinjaman", require("./routes/external/pinjamanRoutes"));
-app.use("/api/angsuran", require("./routes/external/angsuranRoutes"));
-app.use("/api/dashboard", require("./routes/external/dashboardRoutes"));
 
 
 // ===============================
